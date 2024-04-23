@@ -16,7 +16,7 @@ import (
 func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	now, err := time.Parse(DateStyle, r.FormValue("now"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		responseWithError(w, "time.Parse error", err)
 		return
 	}
 
@@ -25,7 +25,7 @@ func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	nextDate, err := NextDate(now, date, repeat)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		responseWithError(w, "NextDate error", err)
 		return
 	}
 
@@ -33,7 +33,7 @@ func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(nextDate))
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		responseWithError(w, "w.Write error", err)
 	}
 }
 
@@ -364,10 +364,19 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 			}
 
 			if cookieToken != token {
-				responseWithError(w, "cookieToken != token error", err)
+				errorResponse := ErrorResponse{Error: "wrong password"}
+				errorData, _ := json.Marshal(errorResponse)
+				w.WriteHeader(http.StatusUnauthorized)
+				_, err := w.Write(errorData)
+
+				if err != nil {
+					responseWithError(w, "w.Write(taskIdData) error", err)
+				}
 				return
 			}
 		}
 		next(w, r)
+
 	}
+
 }
