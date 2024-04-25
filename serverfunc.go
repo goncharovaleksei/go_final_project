@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	now, err := time.Parse(DateStyle, r.FormValue("now"))
 	if err != nil {
-		responseWithError(w, "time.Parse error", err)
+		responseWithError(w, "Ошибка формата даты", err)
 		return
 	}
 
@@ -25,7 +26,7 @@ func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	nextDate, err := NextDate(now, date, repeat)
 
 	if err != nil {
-		responseWithError(w, "NextDate error", err)
+		responseWithError(w, "Ошибка вычисления правила повторения задачи", err)
 		return
 	}
 
@@ -33,7 +34,8 @@ func NextDateReadGET(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(nextDate))
 
 	if err != nil {
-		responseWithError(w, "w.Write error", err)
+		log.Println(fmt.Print("w.Write error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 	}
 }
 
@@ -44,7 +46,8 @@ func responseWithError(w http.ResponseWriter, errorText string, err error) {
 	_, err = w.Write(errorData)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Println(fmt.Print("w.Write error"))
+		responseWithError(w, "Внутренняя ошибка сервера", err)
 	}
 }
 
@@ -53,12 +56,14 @@ func TaskAddPOST(w http.ResponseWriter, r *http.Request) {
 	var buffer bytes.Buffer
 
 	if _, err := buffer.ReadFrom(r.Body); err != nil {
-		responseWithError(w, "ReadFrom(r.Body) error", err)
+		log.Println(fmt.Print("buffer.ReadFrom(r.Body) error"))
+		responseWithError(w, "Ошибка формы запроса", err)
 		return
 	}
 
 	if err := json.Unmarshal(buffer.Bytes(), &taskData); err != nil {
-		responseWithError(w, "JSON error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -67,7 +72,8 @@ func TaskAddPOST(w http.ResponseWriter, r *http.Request) {
 	} else {
 		date, err := time.Parse(DateStyle, taskData.Date)
 		if err != nil {
-			responseWithError(w, "DateStyle error", err)
+			log.Println(fmt.Print("DateStyle error"))
+			responseWithError(w, "Ошибка формата даты", err)
 			return
 		}
 
@@ -77,26 +83,31 @@ func TaskAddPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(taskData.Title) == 0 {
-		responseWithError(w, "Title error", errors.New("Empty"))
+		log.Println(fmt.Print("Title error"))
+		responseWithError(w, "Ошибка загаловка", errors.New("Title"))
 		return
 	}
 
 	if len(taskData.Repeat) > 0 {
 		if _, err := NextDate(time.Now(), taskData.Date, taskData.Repeat); err != nil {
-			responseWithError(w, "Repeat problem", err)
+			log.Println(fmt.Print("Repeat error"))
+			responseWithError(w, "Ошибка вычисления правила повторения задачи", err)
 			return
 		}
 	}
 
 	taskId, err := InsertTask(taskData)
 	if err != nil {
-		responseWithError(w, "Insert task problem", err)
+		log.Println(fmt.Print("Insert task error"))
+		responseWithError(w, "Ошибка добавления задачи", err)
 		return
 	}
 
 	taskIdData, err := json.Marshal(TaskId{Id: taskId})
 	if err != nil {
-		responseWithError(w, "json.Marshal error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -104,7 +115,8 @@ func TaskAddPOST(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(taskIdData)
 
 	if err != nil {
-		responseWithError(w, "Write(taskIdData) error", err)
+		log.Println(fmt.Print("w.Write(taskIdData) error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 	}
 }
 
@@ -118,26 +130,31 @@ func TasksReadGET(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			tasks, err = SearchTasks(search)
 			if err != nil {
-				responseWithError(w, "SearchTasks error", err)
+				log.Println(fmt.Print("SearchTasks error"))
+				responseWithError(w, "Ошибка поиска задачи", err)
 			}
 		} else {
 			tasks, err = SearchTasksByDate(date.Format(DateStyle))
 			if err != nil {
-				responseWithError(w, "SearchTasksByDate error", err)
+				log.Println(fmt.Print("SearchTasksByDate error"))
+				responseWithError(w, "Ошибка поиска задачи по дате", err)
 			}
 		}
 	} else {
 		var err error
 		tasks, err = ReadTasks()
 		if err != nil {
-			responseWithError(w, "ReadTasks error", err)
+			log.Println(fmt.Print("SearchTasksByDate error"))
+			responseWithError(w, "Ошибка чтения задач", err)
 			return
 		}
 	}
 
 	tasksData, err := json.Marshal(Tasks{Tasks: tasks})
 	if err != nil {
-		responseWithError(w, "json.Marshal error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -152,6 +169,18 @@ func TasksReadGET(w http.ResponseWriter, r *http.Request) {
 func TaskReadGET(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 
+	if len(id) == 0 {
+		log.Println(fmt.Print("id error"))
+		responseWithError(w, "Ошибка идентификатора", errors.New("id"))
+		return
+	}
+
+	if _, err := strconv.Atoi(id); err != nil {
+		log.Println(fmt.Print("Atoi(task.Id) error"))
+		responseWithError(w, "Ошибка фидентификатора", err)
+		return
+	}
+
 	task, err := ReadTask(id)
 	if err != nil {
 		responseWithError(w, "ReadTask(id) error", err)
@@ -160,7 +189,9 @@ func TaskReadGET(w http.ResponseWriter, r *http.Request) {
 
 	tasksData, err := json.Marshal(task)
 	if err != nil {
-		responseWithError(w, "json.Marshal error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -168,7 +199,8 @@ func TaskReadGET(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(tasksData)
 
 	if err != nil {
-		responseWithError(w, "Write(tasksData) error", err)
+		log.Println(fmt.Print("w.Write(taskIdData) error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 	}
 }
 
@@ -177,51 +209,60 @@ func TaskUpdatePUT(w http.ResponseWriter, r *http.Request) {
 	var buffer bytes.Buffer
 
 	if _, err := buffer.ReadFrom(r.Body); err != nil {
-		responseWithError(w, "ReadFrom(r.Body) error", err)
+		log.Println(fmt.Print("buffer.ReadFrom(r.Body) error"))
+		responseWithError(w, "Ошибка формы запроса", err)
 		return
 	}
 
 	if err := json.Unmarshal(buffer.Bytes(), &task); err != nil {
-		responseWithError(w, "JSON error", err)
+		log.Println(fmt.Print("json.Unmarshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if len(task.Id) == 0 {
-		responseWithError(w, "id error", errors.New("id is empty"))
+		log.Println(fmt.Print("id error"))
+		responseWithError(w, "Ошибка идентификатора", errors.New("id"))
 		return
 	}
 
 	if _, err := strconv.Atoi(task.Id); err != nil {
-		responseWithError(w, "Atoi(task.Id) error", err)
+		log.Println(fmt.Print("Atoi(task.Id) error"))
+		responseWithError(w, "Ошибка фидентификатора", err)
 		return
 	}
 
 	if _, err := time.Parse(DateStyle, task.Date); err != nil {
-		responseWithError(w, "DateStyle error", err)
+		log.Println(fmt.Print("DateStyle error"))
+		responseWithError(w, "Ошибка формата даты", err)
 		return
 	}
 
 	if len(task.Title) == 0 {
-		responseWithError(w, "Title error", errors.New("title is empty"))
+		log.Println(fmt.Print("Title error"))
+		responseWithError(w, "Ошибка загаловка", errors.New("Title"))
 		return
 	}
 
 	if len(task.Repeat) > 0 {
 		if _, err := NextDate(time.Now(), task.Date, task.Repeat); err != nil {
-			responseWithError(w, "Repeat error", errors.New("no such format"))
+			responseWithError(w, "Ошибка вычисления правила повторения задачи", err)
 			return
 		}
 	}
 
 	_, err := UpdateTask(task)
 	if err != nil {
-		responseWithError(w, "UpdateTask(task) error", errors.New("failed to update task"))
+		log.Println(fmt.Print("UpdateTask(task) error"))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	taskIdData, err := json.Marshal(task)
 	if err != nil {
-		responseWithError(w, "json.Marshal(task) error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -229,7 +270,8 @@ func TaskUpdatePUT(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(taskIdData)
 
 	if err != nil {
-		responseWithError(w, "Write(taskIdData) error", err)
+		log.Println(fmt.Print("w.Write(taskIdData) error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 		return
 	}
 }
@@ -256,14 +298,17 @@ func TaskDonePOST(w http.ResponseWriter, r *http.Request) {
 
 		_, err = UpdateTask(task)
 		if err != nil {
-			responseWithError(w, "UpdateTask error", err)
+			log.Println(fmt.Print("UpdateTask(task) error"))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	}
 
 	tasksData, err := json.Marshal(struct{}{})
 	if err != nil {
-		responseWithError(w, "JSON error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -271,7 +316,8 @@ func TaskDonePOST(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(tasksData)
 
 	if err != nil {
-		responseWithError(w, "w.Write(tasksData) error", err)
+		log.Println(fmt.Print("w.Write(taskIdData) error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 	}
 }
 
@@ -286,7 +332,9 @@ func TaskDELETE(w http.ResponseWriter, r *http.Request) {
 
 	tasksData, err := json.Marshal(struct{}{})
 	if err != nil {
-		responseWithError(w, "JSON error", err)
+		log.Println(fmt.Print("json.Marshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -294,7 +342,8 @@ func TaskDELETE(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(tasksData)
 
 	if err != nil {
-		responseWithError(w, "w.Write(tasksData) error", err)
+		log.Println(fmt.Print("w.Write(taskIdData) error"))
+		responseWithError(w, "Ошибка отправки данных", err)
 		return
 	}
 }
@@ -304,12 +353,14 @@ func SignInPOST(w http.ResponseWriter, r *http.Request) {
 	var buffer bytes.Buffer
 
 	if _, err := buffer.ReadFrom(r.Body); err != nil {
-		responseWithError(w, "ReadFrom(r.Body) error", err)
+		log.Println(fmt.Print("buffer.ReadFrom(r.Body) error"))
+		responseWithError(w, "Ошибка формы запроса", err)
 		return
 	}
 
 	if err := json.Unmarshal(buffer.Bytes(), &signData); err != nil {
-		responseWithError(w, "JSON error", err)
+		log.Println(fmt.Print("json.Unmarshal error"))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -326,7 +377,9 @@ func SignInPOST(w http.ResponseWriter, r *http.Request) {
 
 		taskIdData, err := json.Marshal(Token{Token: token})
 		if err != nil {
-			responseWithError(w, "JSON error", err)
+			log.Println(fmt.Print("json.Marshal error"))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -334,7 +387,8 @@ func SignInPOST(w http.ResponseWriter, r *http.Request) {
 		_, err = w.Write(taskIdData)
 
 		if err != nil {
-			responseWithError(w, "w.Write(taskIdData) error", err)
+			log.Println(fmt.Print("w.Write(taskIdData) error"))
+			responseWithError(w, "Ошибка отправки данных", err)
 		}
 	} else {
 		errorResponse := ErrorResponse{Error: "wrong password"}
@@ -343,7 +397,8 @@ func SignInPOST(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write(errorData)
 
 		if err != nil {
-			responseWithError(w, "w.Write(taskIdData) error", err)
+			log.Println(fmt.Print("w.Write(taskIdData) error"))
+			responseWithError(w, "Ошибка отправки данных", err)
 		}
 	}
 }
@@ -370,7 +425,8 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 				_, err := w.Write(errorData)
 
 				if err != nil {
-					responseWithError(w, "w.Write(taskIdData) error", err)
+					log.Println(fmt.Print("w.Write(taskIdData) error"))
+					responseWithError(w, "Ошибка отправки данных", err)
 				}
 				return
 			}
